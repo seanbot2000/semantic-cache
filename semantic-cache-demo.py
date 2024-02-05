@@ -87,7 +87,7 @@ def create_redis_indexes(vectorDim):
 			"HNSW",
 			{
 				"TYPE": "FLOAT32",
-				"DIM": vectorDim,
+				"DIM": 1536,
 				"DISTANCE_METRIC": "COSINE",
 			},
 			as_name="vector",
@@ -158,7 +158,7 @@ def check_redis_for_query_match(query):
 def vss_search_redis(vectors):
 	logging.info("running vss search on index in Redis")
 	query = (
-		Query('(*)=>[KNN 3 @description_embeddings $query_vector]')
+		Query('(*)=>[KNN 3 @vector $query_vector]')
 		.return_fields('id', 'title', 'director')
 		.dialect(2)
 	)
@@ -167,7 +167,7 @@ def vss_search_redis(vectors):
 	result_docs = (
             redis_client.ft(f"idx:{config.redis_key}")
             .search(
-                query,
+                query, query_params=
                 {
                     "query_vector": numpy.array(
                         vectors, dtype=numpy.float32
@@ -177,7 +177,6 @@ def vss_search_redis(vectors):
             .docs
         )
 	print(result_docs)
-	exit()
 	return result_docs
 	
 def query_cosmos(vssResults):
@@ -191,7 +190,7 @@ def query_cosmos(vssResults):
 	responses = []
 	for result in vssResults:
 		print(result)
-		responses.append(cosmos_container.read_item(item=result["id"], partition_key=result["/MoviesId"]))
+		responses.append(cosmos_container.read_item(item=vssResults["id"], partition_key=result["id"]))
 		exit
 
 	return responses
