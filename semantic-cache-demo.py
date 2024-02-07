@@ -9,7 +9,7 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 from azure.core.exceptions import AzureError as exceptions
 from azure.cosmos import CosmosClient, PartitionKey
-import openai
+from openai import AzureOpenAI
 import redis
 from redis.commands.search.field import (
     NumericField,
@@ -29,6 +29,10 @@ data_file = config.data_file
 cosmos_client = None
 cosmos_db = None
 cosmos_container = None
+
+openai_client = AzureOpenAI(azure_endpoint=config.azure_openai_endpoint,
+api_version=config.azure_openai_api_version,
+api_key=config.azure_openai_api_key)
 
 redis_client = None
 
@@ -57,19 +61,12 @@ def push_cosmos_data():
 
 def create_vector_data():
 	logging.info("configure connection to Azure Open AI")
-	openai.api_type = "azure"
-	openai.api_key = config.azure_openai_api_key
-	openai.api_base = config.azure_openai_endpoint
-	openai.api_version = config.azure_openai_api_version
 	azure_openai_embedding_model = config.azure_openai_embedding_model
 	logging.info("create vectors from data")
 	for key, value in tqdm(jsonData.items()):
 		vectorText = f"{value['Title']}, {value['Director']}, {value['Writer']}, {value['Summary']}"
-		response = openai.Embedding.create(
-    		input=vectorText,
-    		engine=azure_openai_embedding_model
-		)
-		vectorData[key] = response['data'][0]['embedding']
+		response = openai_client.embeddings.create(input=vectorText, model=azure_openai_embedding_model)
+		vectorData[key] = response.data[0].embedding
 		if key%50==0:
 			time.sleep(10)
 
@@ -215,10 +212,6 @@ def format_json_response(response):
 	return formatted
 
 def interact():
-	openai.api_type = "azure"
-	openai.api_key = config.azure_openai_api_key
-	openai.api_base = config.azure_openai_endpoint
-	openai.api_version = config.azure_openai_api_version
 	azure_openai_embedding_model = config.azure_openai_embedding_model
 
 	queries = [
@@ -241,11 +234,8 @@ def interact():
 			input("Press Enter to continue...")
 		else:
 			logging.info("miss for this question: create vector to get results")
-			response = openai.Embedding.create(
-				input=query,
-				engine=azure_openai_embedding_model
-			)
-			vectors = response['data'][0]['embedding']
+			response = openai_client.embeddings.create(input=query, model=azure_openai_embedding_model)
+			vectors = response.data[0].embedding
 			logging.info("perform vector similarity search")
 			vssResults = vss_search_redis(vectors)
 			logging.info("get data from cosmos")
